@@ -1,0 +1,93 @@
+name: Update Binary
+
+on:
+  schedule:
+    # 每天 UTC 0:00 检查更新 (北京时间 8:00)
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # 手动触发
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Get latest version
+      id: version
+      run: |
+        # 获取 OpenP2P 最新版本
+        LATEST_VERSION=$(curl -s https://api.github.com/repos/openp2p-cn/openp2p/releases/latest | jq -r '.tag_name' | sed 's/v//')
+        echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+        echo "Latest version: $LATEST_VERSION"
+        
+    - name: Check if update needed
+      id: check
+      run: |
+        CURRENT_VERSION=$(grep "version=" module.prop | cut -d'=' -f2)
+        echo "Current version: $CURRENT_VERSION"
+        echo "Latest version: ${{ steps.version.outputs.version }}"
+        
+        if [ "$CURRENT_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+          echo "update_needed=true" >> $GITHUB_OUTPUT
+          echo "Update needed!"
+        else
+          echo "update_needed=false" >> $GITHUB_OUTPUT
+          echo "Already up to date."
+        fi
+        
+    - name: Download new binary
+      if: steps.check.outputs.update_needed == 'true'
+      run: |
+        VERSION=${{ steps.version.outputs.version }}
+        echo "Downloading OpenP2P v$VERSION for arm64..."
+        
+        curl -L -o openp2p.tar.gz "https://github.com/openp2p-cn/openp2p/releases/download/v${VERSION}/openp2p-${VERSION}.linux-arm64.tar.gz"
+        tar -xzf openp2p.tar.gz
+        chmod +x openp2p
+        rm openp2p.tar.gz
+        
+    - name: Update module.prop
+      if: steps.check.outputs.update_needed == 'true'
+      run: |
+        VERSION=${{ steps.version.outputs.version }}
+        VERSION_CODE=$(echo $VERSION | sed 's/\.//g')
+        
+        sed -i "s/^version=.*/version=$VERSION/" module.prop
+        sed -i "s/^versionCode=.*/versionCode=$VERSION_CODE/" module.prop
+        
+        echo "Updated module.prop:"
+        cat module.prop
+        
+    - name: Commit and push
+      if: steps.check.outputs.update_needed == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add openp2p module.prop
+        git commit -m "chore: update to v${{ steps.version.outputs.version }}"
+        git push
+        
+    - name: Create Release
+      if: steps.check.outputs.update_needed == 'true'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        name: OpenP2P v${{ steps.version.outputs.version }}
+        body: |
+          ## 更新内容
+          - 更新 OpenP2P 二进制文件至 v${{ steps.version.outputs.version }}
+          
+          ## 安装方法
+          下载 `openp2p-magisk.zip` 并在 Magisk Manager 中安装
+        files: |
+          openp2p
+          module.prop
+          service.sh
+          openp2p_core.sh
+          action.sh
+          uninstall.sh
+          config/config.json
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

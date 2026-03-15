@@ -1,0 +1,17 @@
+{
+  "network": {
+    "Token": "YOUR_TOKEN_HERE",
+    "Node": "",
+    "User": "",
+    "ShareBandwidth": 50,
+    "ServerHost": "api.openp2p.cn",
+    "ServerIP": "",
+    "ServerPort": 27183,
+    "PublicIPPort": 7037
+  },
+  "apps": null,
+  "LogLevel": 1,
+  "MaxLogSize": 1048576,
+  "TLSInsecureSkipVerify": true,
+  "Forcev6": false
+}
