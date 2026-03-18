@@ -61,12 +61,30 @@ jobs:
         UPSTREAM="${{ steps.upstream.outputs.upstream_version }}"
         CURRENT="${{ steps.current.outputs.current_base }}"
         
-        if [ "$UPSTREAM" != "$CURRENT" ]; then
+        echo "Comparing: upstream=$UPSTREAM vs current=$CURRENT"
+        
+        # 解析版本号
+        UP_MAJOR=$(echo "$UPSTREAM" | cut -d'.' -f1)
+        UP_MINOR=$(echo "$UPSTREAM" | cut -d'.' -f2)
+        UP_PATCH=$(echo "$UPSTREAM" | cut -d'.' -f3)
+        
+        CUR_MAJOR=$(echo "$CURRENT" | cut -d'.' -f1)
+        CUR_MINOR=$(echo "$CURRENT" | cut -d'.' -f2)
+        CUR_PATCH=$(echo "$CURRENT" | cut -d'.' -f3)
+        
+        # 转换为数字比较 (例如 3.24.23 -> 32423, 3.25.0 -> 32500)
+        UP_NUM=$((UP_MAJOR * 10000 + UP_MINOR * 100 + UP_PATCH))
+        CUR_NUM=$((CUR_MAJOR * 10000 + CUR_MINOR * 100 + CUR_PATCH))
+        
+        echo "Version numbers: upstream=$UP_NUM vs current=$CUR_NUM"
+        
+        # 只有上游版本更大时才需要更新
+        if [ "$UP_NUM" -gt "$CUR_NUM" ]; then
           echo "update_needed=true" >> $GITHUB_OUTPUT
-          echo "Update needed: $CURRENT -> $UPSTREAM"
+          echo "✅ Update needed: v$CURRENT -> v$UPSTREAM"
         else
           echo "update_needed=false" >> $GITHUB_OUTPUT
-          echo "Already up to date"
+          echo "⏭️ Already up to date or newer (current v$CURRENT >= upstream v$UPSTREAM)"
         fi
         
     - name: Calculate new version
@@ -134,11 +152,25 @@ jobs:
       run: |
         git config user.email "2322527175@qq.com"
         git config user.name "232252"
+        
+        # 添加所有更改
         git add -A
+        
+        # 检查是否有更改需要提交
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+          exit 0
+        fi
+        
         git commit -m "chore: update to v${{ steps.newver.outputs.new_version }} from upstream v${{ steps.newver.outputs.upstream_version }}"
         
-        # 先拉取远程更新，避免非快进推送失败
-        git pull --rebase origin main || true
+        # 拉取远程更新并变基
+        echo "Pulling latest changes from origin/main..."
+        git fetch origin main
+        git rebase origin/main
+        
+        # 推送到 main 分支
+        echo "Pushing to origin/main..."
         git push origin HEAD:main
         
     - name: Create tag
